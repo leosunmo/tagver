@@ -1,2 +1,2 @@
 build:
-	GOOS=linux go build -ldflags="-s -w"
+	GOOS=linux CGO_ENABLED=0 go build -ldflags="-s -w -extldflags -static"
