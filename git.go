@@ -25,7 +25,10 @@ type Git struct {
 // repository is bare or a normal one. If the path doesn't contain a valid
 // repository ErrRepositoryNotExists is returned
 func plainOpen(path string) (*Git, error) {
-	r, err := git.PlainOpen(path)
+	opts := &git.PlainOpenOptions{
+		DetectDotGit: true,
+	}
+	r, err := git.PlainOpenWithOptions(path, opts)
 	return &Git{
 		make(map[plumbing.Hash][]*plumbing.Reference),
 		r,
