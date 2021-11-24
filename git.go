@@ -9,10 +9,10 @@ import (
 	"sort"
 
 	"github.com/Masterminds/semver"
-	git "gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing"
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
-	"gopkg.in/src-d/go-git.v4/plumbing/storer"
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 // Git struct wrapps Repository class from go-git to add a tag map used to perform queries when describing. From https://github.com/edupo/semver-cli/blob/master/gitWrapper/git.go
@@ -82,6 +82,10 @@ func (g *Git) Describe(reference *plumbing.Reference) (string, int, string, erro
 		Order: git.LogOrderCommitterTime,
 	})
 
+	if err != nil {
+		return "", 0, "", err
+	}
+
 	// Build the tag map
 	err = g.getTagMap()
 	if err != nil {
@@ -105,6 +109,11 @@ func (g *Git) Describe(reference *plumbing.Reference) (string, int, string, erro
 		count++
 		return nil
 	})
+
+	if err != nil {
+		return "", 0, "", err
+	}
+
 	if tag != nil {
 		if count == 0 {
 			return fmt.Sprint(tag.Name().Short()), 0, "", nil
