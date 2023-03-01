@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -63,6 +64,9 @@ func main() {
 		var hash string
 		tag, count, hash, err = getLatestTagFromRepository(r)
 		if err != nil {
+			if errors.Is(err, plumbing.ErrObjectNotFound) {
+				tag = ""
+			}
 			log.Fatalf("Failed to get latest tag from %s, err %s\n", path, err.Error())
 		}
 		if count != 0 && !ignoreUncleanTag && !getBranch && !getCommit {
