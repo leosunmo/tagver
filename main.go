@@ -79,7 +79,16 @@ func main() {
 
 	if getBranch {
 		var err error
-		branch, err = getCurrentBranchFromRepository(r)
+		// if in detached head, get branch from commit
+		hr, err := r.Head()
+		if err != nil {
+			log.Fatalf("Failed to get head from %s, err %s\n", path, err.Error())
+		}
+		if hr.Name() == plumbing.HEAD {
+			branch, err = getCurrentBranchFromDetachedHead(r)
+		} else {
+			branch, err = getCurrentBranchFromRepository(r)
+		}
 		if err != nil {
 			log.Fatalf("Failed to get current branch from %s, err %s\n", path, err.Error())
 		}
@@ -105,6 +114,90 @@ func main() {
 		return
 	}
 	fmt.Printf("%s\n", strings.Join(versionInfo, "-"))
+}
+
+func getCurrentBranchFromDetachedHead(r *Git) (string, error) {
+	commit, err := r.Head()
+	if err != nil {
+		return "", err
+	}
+
+	memo := make(map[plumbing.Hash]bool)
+
+	rs, err := r.References()
+
+	if err != nil {
+		return "", err
+	}
+
+	var branches []plumbing.ReferenceName
+
+	rs.ForEach(func(ref *plumbing.Reference) error {
+		n := ref.Name()
+		if n.IsBranch() || n.IsRemote() {
+			b, err := r.Reference(n, true)
+			if err != nil {
+				return err
+			}
+			v, err := reaches(r.Repository, b.Hash(), commit.Hash(), memo)
+			if err != nil {
+				return err
+			}
+			if v {
+				branches = append(branches, n)
+			}
+		}
+		return nil
+	})
+
+	for _, b := range branches {
+		// If there are multiple branches, prefer the local branch over the remote branch.
+		// If there are multiple local branches, simply return the first one we encounter.
+		if b.IsBranch() {
+			return b.Short(), nil
+		}
+
+		// If there are no local branches, return the first remote branch we encounter with the
+		// remote name stripped.
+		remotes, err := r.Remotes()
+		if err != nil {
+			return "", fmt.Errorf("failed to get remotes: %w", err)
+		}
+		for _, remote := range remotes {
+			branch, match := strings.CutPrefix(b.Short(), remote.Config().Name+"/")
+			if match {
+				return branch, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("no branches found")
+}
+
+// reaches returns true if commit, c, can be reached from commit, start. Results are memoized in memo.
+func reaches(r *git.Repository, start, c plumbing.Hash, memo map[plumbing.Hash]bool) (bool, error) {
+	if v, ok := memo[start]; ok {
+		return v, nil
+	}
+	if start == c {
+		memo[start] = true
+		return true, nil
+	}
+	co, err := r.CommitObject(start)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range co.ParentHashes {
+		v, err := reaches(r, p, c, memo)
+		if err != nil {
+			return false, err
+		}
+		if v {
+			memo[start] = true
+			return true, nil
+		}
+	}
+	memo[start] = false
+	return false, nil
 }
 
 func getCurrentBranchFromRepository(repository *Git) (string, error) {
