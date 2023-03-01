@@ -1,6 +1,6 @@
 module github.com/leosunmo/tagver
 
-go 1.13
+go 1.20
 
 require (
 	github.com/Masterminds/semver v1.5.0
