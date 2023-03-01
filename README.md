@@ -35,7 +35,7 @@ v1.0.4-1-5227b593
 Default with no tags present:
 ```
 tagver
-master-63380731
+main-63380731
 ```
 Default ignoring the fact that there's commits after the latest tag:
 ```
@@ -45,5 +45,5 @@ v1.0.4
 All options provided (ignores the fact that latest tag doesn't point to HEAD):
 ```
 tagver -t -b -c
-v1.0.4-master-5227b593
+v1.0.4-main-5227b593
 ```
