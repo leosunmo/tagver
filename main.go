@@ -66,8 +66,9 @@ func main() {
 		if err != nil {
 			if errors.Is(err, plumbing.ErrObjectNotFound) {
 				tag = ""
+			} else {
+				log.Fatalf("Failed to get latest tag from %s, err %s\n", path, err.Error())
 			}
-			log.Fatalf("Failed to get latest tag from %s, err %s\n", path, err.Error())
 		}
 		if count != 0 && !ignoreUncleanTag && !getBranch && !getCommit {
 			tag = fmt.Sprintf("%v-%v-%v",
