@@ -91,11 +91,14 @@ func main() {
 		}
 		if hr.Name() == plumbing.HEAD {
 			branch, err = getCurrentBranchFromDetachedHead(r)
+			if err != nil {
+				log.Fatalf("Failed to get current branch from detached head at %q in directory %s, err %s\n", hr.Hash().String()[:8], path, err.Error())
+			}
 		} else {
 			branch, err = getCurrentBranchFromRepository(r)
-		}
-		if err != nil {
-			log.Fatalf("Failed to get current branch from %s, err %s\n", path, err.Error())
+			if err != nil {
+				log.Fatalf("Failed to get current branch from %q in directory %s, err %s\n", hr.Name().Short(), path, err.Error())
+			}
 		}
 	}
 
