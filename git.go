@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/Masterminds/semver"
 	git "github.com/go-git/go-git/v5"
@@ -71,10 +72,10 @@ func (g *Git) getTagMap() error {
 	return err
 }
 
-// Describe returns the latest tag, number of commits from reference to that tag, and reference's hash.
+// Describe returns the latest tag and number of commits from reference to that tag.
 // Almost the same as "git describe --tags" other than the "g" prefix on the commit hash
-// If the reference itself has a tag the count and hash will be empty
-func (g *Git) Describe(reference *plumbing.Reference) (string, int, string, error) {
+// If the reference itself has a tag the count will be empty
+func (g *Git) Describe(reference *plumbing.Reference) (string, int, error) {
 
 	// Fetch the reference log
 	cIter, err := g.Log(&git.LogOptions{
@@ -83,13 +84,13 @@ func (g *Git) Describe(reference *plumbing.Reference) (string, int, string, erro
 	})
 
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, err
 	}
 
 	// Build the tag map
 	err = g.getTagMap()
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, err
 	}
 
 	// Search the tag
@@ -111,16 +112,163 @@ func (g *Git) Describe(reference *plumbing.Reference) (string, int, string, erro
 	})
 
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, err
 	}
 
 	if tag != nil {
 		if count == 0 {
-			return fmt.Sprint(tag.Name().Short()), 0, "", nil
+			return fmt.Sprint(tag.Name().Short()), 0, nil
 		}
-		return tag.Name().Short(), count, reference.Hash().String()[0:8], nil
+		return tag.Name().Short(), count, nil
 	}
-	return "", 0, "", nil
+	return "", 0, nil
+}
+
+func getCurrentCommitFromRepository(repository *Git) (string, error) {
+	headRef, err := repository.Head()
+	if err != nil {
+		return "", err
+	}
+	headSha := headRef.Hash().String()[:8]
+
+	return headSha, nil
+}
+
+func getLatestTagFromRepository(repository *Git) (string, int, error) {
+	// Check if HEAD has tag before iterating over all tags
+	headRef, err := repository.Head()
+	if err != nil {
+		return "", 0, err
+	}
+
+	tag, count, err := repository.Describe(headRef)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return tag, count, nil
+}
+
+func getCurrentBranchFromRepository(repository *Git) (string, error) {
+	branchRefs, err := repository.Branches()
+	if err != nil {
+		return "", err
+	}
+
+	headRef, err := repository.Head()
+	if err != nil {
+		return "", err
+	}
+
+	var currentBranchName string
+	err = branchRefs.ForEach(func(branchRef *plumbing.Reference) error {
+		if branchRef.Hash() == headRef.Hash() {
+			currentBranchName = branchRef.Name().String()
+
+			return nil
+		}
+
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimPrefix(currentBranchName, "refs/heads/"), nil
+}
+
+func isDetachedHead(r *Git) bool {
+	head, err := r.Head()
+	if err != nil {
+		return false
+	}
+	return head.Name() == plumbing.HEAD
+}
+
+func getCurrentBranchFromDetachedHead(r *Git) (string, error) {
+	hr, err := r.Head()
+	if err != nil {
+		return "", err
+	}
+
+	memo := make(map[plumbing.Hash]bool)
+
+	rs, err := r.References()
+
+	if err != nil {
+		return "", fmt.Errorf("no branch found in detached head at %q, err %w\n", hr.Hash().String()[:8], err)
+	}
+
+	var branches []plumbing.ReferenceName
+
+	rs.ForEach(func(ref *plumbing.Reference) error {
+		n := ref.Name()
+		if n.IsBranch() || n.IsRemote() {
+			b, err := r.Reference(n, true)
+			if err != nil {
+				return err
+			}
+			v, err := reaches(r.Repository, b.Hash(), hr.Hash(), memo)
+			if err != nil {
+				return err
+			}
+			if v {
+				branches = append(branches, n)
+			}
+		}
+		return nil
+	})
+
+	var branch string
+	for _, b := range branches {
+		// If there are multiple branches, prefer the local branch over the remote branch.
+		// If there are multiple local branches, simply return the first one we encounter.
+		if b.IsBranch() {
+			return b.Short(), nil
+		}
+
+		// If there are no local branches, return the first remote branch we encounter with the
+		// remote name stripped.
+		remotes, err := r.Remotes()
+		if err != nil {
+			return "", fmt.Errorf("failed to get remotes: %w", err)
+		}
+		for _, remote := range remotes {
+			b, match := strings.CutPrefix(b.Short(), remote.Config().Name+"/")
+			if match {
+				branch = b
+				break
+			}
+		}
+	}
+	return branch, nil
+}
+
+// reaches returns true if commit, c, can be reached from commit, start. Results are memoized in memo.
+func reaches(r *git.Repository, start, c plumbing.Hash, memo map[plumbing.Hash]bool) (bool, error) {
+	if v, ok := memo[start]; ok {
+		return v, nil
+	}
+	if start == c {
+		memo[start] = true
+		return true, nil
+	}
+	co, err := r.CommitObject(start)
+	if err != nil {
+		return false, err
+	}
+	for _, p := range co.ParentHashes {
+		v, err := reaches(r, p, c, memo)
+		if err != nil {
+			return false, err
+		}
+		if v {
+			memo[start] = true
+			return true, nil
+		}
+	}
+	memo[start] = false
+	return false, nil
 }
 
 func getHighestSemverRef(references []*plumbing.Reference) *plumbing.Reference {
