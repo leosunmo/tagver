@@ -116,7 +116,7 @@ func main() {
 
 	if (*getTag || getDefault) && !*ignoreUncleanTag && count != 0 {
 		idents = append(idents, strconv.Itoa(count))
-		if !*getCommit {
+		if !*getCommit && *getTag {
 			// Forcefully add commit even if it's not desired since we're
 			// in an unclean state.
 			idents = append(idents, commit)
