@@ -123,7 +123,7 @@ func main() {
 		}
 	}
 
-	if *getCommit {
+	if *getCommit || getDefault {
 		idents = append(idents, commit)
 	}
 
