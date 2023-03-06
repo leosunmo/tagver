@@ -5,14 +5,22 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-var getTag, getBranch, getCommit, getDefault, ignoreUncleanTag bool
+var getDefault bool
 var path string
+
+var (
+	getTag           = flag.Bool("t", false, "Return the latest semver tag (annotated or lightweight Git tag) (default)")
+	getBranch        = flag.Bool("b", false, "Return the current branch")
+	getCommit        = flag.Bool("c", false, "Return the current commit")
+	ignoreUncleanTag = flag.Bool("ignore-unclean-tag", false, "Return only tag name even if the latest tag doesn't point to HEAD (\"v1.0.4\" instead of \"v1.0.4-1-89c22b28\")")
+)
 
 // Basic example of how to list tags.
 func main() {
@@ -29,14 +37,9 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	flag.BoolVar(&getTag, "t", false, "Return the latest semver tag (annotated or lightweight Git tag) (default)")
-	flag.BoolVar(&getBranch, "b", false, "Return the current branch")
-	flag.BoolVar(&getCommit, "c", false, "Return the current commit")
-	flag.BoolVar(&ignoreUncleanTag, "ignore-unclean-tag", false, "Return only tag name even if the latest tag doesn't point to HEAD (\"v1.0.4\" instead of \"v1.0.4-1-89c22b28\")")
-
 	flag.Parse()
 
-	if !getTag && !getBranch && !getCommit {
+	if !*getTag && !*getBranch && !*getCommit {
 		getDefault = true
 	}
 
@@ -56,13 +59,33 @@ func main() {
 		}
 	}
 
-	var commit, branch, tag string
+	var commit string
+	var branch string
+	var tag string
+	var count int
 
-	if getTag || getDefault {
-		var err error
-		var count int
-		var hash string
-		tag, count, hash, err = getLatestTagFromRepository(r)
+	// Check if we're in a CI environment
+	if isCI() {
+		commit, branch, tag = getRefsFromCI(r)
+	} else {
+		if isDetachedHead(r) {
+			// Check if we're in a detached head state
+			branch, err = getCurrentBranchFromDetachedHead(r)
+			if err != nil {
+				log.Fatalf("Failed to get current branch from %s, err %s\n", path, err.Error())
+			}
+		} else {
+			branch, err = getCurrentBranchFromRepository(r)
+			if err != nil {
+				log.Fatalf("Failed to get current branch from %q, %s\n", path, err.Error())
+			}
+		}
+		commit, err = getCurrentCommitFromRepository(r)
+		if err != nil {
+			log.Fatalf("Failed to get current commit from %s, err %s\n", path, err.Error())
+		}
+
+		tag, count, err = getLatestTagFromRepository(r)
 		if err != nil {
 			if errors.Is(err, plumbing.ErrObjectNotFound) {
 				tag = ""
@@ -70,193 +93,44 @@ func main() {
 				log.Fatalf("Failed to get latest tag from %s, err %s\n", path, err.Error())
 			}
 		}
-		if count != 0 && !ignoreUncleanTag && !getBranch && !getCommit {
-			tag = fmt.Sprintf("%v-%v-%v",
-				tag,
-				count,
-				hash)
-		}
-		if tag == "" && getDefault {
-			getBranch = true
-			getCommit = true
+	}
+
+	var idents []string
+
+	if *getTag || getDefault {
+		if tag != "" {
+			idents = append(idents, tag)
 		}
 	}
 
-	if getBranch {
-		var err error
-		// if in detached head, get branch from commit
-		hr, err := r.Head()
-		if err != nil {
-			log.Fatalf("Failed to get head from %s, err %s\n", path, err.Error())
-		}
-		if hr.Name() == plumbing.HEAD {
-			branch, err = getCurrentBranchFromDetachedHead(r)
-			if err != nil {
-				log.Fatalf("Failed to get current branch from detached head at %q in directory %s, err %s\n", hr.Hash().String()[:8], path, err.Error())
-			}
-		} else {
-			branch, err = getCurrentBranchFromRepository(r)
-			if err != nil {
-				log.Fatalf("Failed to get current branch from %q in directory %s, err %s\n", hr.Name().Short(), path, err.Error())
-			}
+	if tag == "" && getDefault {
+		*getBranch = true
+		*getCommit = true
+	}
+
+	if *getBranch {
+		if branch != "" {
+			idents = append(idents, branch)
 		}
 	}
 
-	if getCommit {
-		var err error
-		commit, err = getCurrentCommitFromRepository(r)
-		if err != nil {
-			log.Fatalf("Failed to get current commit from %s, err %s\n", path, err.Error())
+	if (*getTag || getDefault) && !*ignoreUncleanTag && count != 0 {
+		idents = append(idents, strconv.Itoa(count))
+		if !*getCommit {
+			// Forcefully add commit even if it's not desired since we're
+			// in an unclean state.
+			idents = append(idents, commit)
 		}
 	}
 
-	pt := []string{tag, branch, commit}
-	var versionInfo []string
-	for _, s := range pt {
-		if s != "" {
-			versionInfo = append(versionInfo, s)
-		}
+	if *getCommit {
+		idents = append(idents, commit)
 	}
-	if len(versionInfo) == 0 {
+
+	if len(idents) == 0 {
 		log.Println("no version information found")
 		return
 	}
-	fmt.Printf("%s\n", strings.Join(versionInfo, "-"))
-}
+	fmt.Printf("%s\n", strings.Join(idents, "-"))
 
-func getCurrentBranchFromDetachedHead(r *Git) (string, error) {
-	commit, err := r.Head()
-	if err != nil {
-		return "", err
-	}
-
-	memo := make(map[plumbing.Hash]bool)
-
-	rs, err := r.References()
-
-	if err != nil {
-		return "", err
-	}
-
-	var branches []plumbing.ReferenceName
-
-	rs.ForEach(func(ref *plumbing.Reference) error {
-		n := ref.Name()
-		if n.IsBranch() || n.IsRemote() {
-			b, err := r.Reference(n, true)
-			if err != nil {
-				return err
-			}
-			v, err := reaches(r.Repository, b.Hash(), commit.Hash(), memo)
-			if err != nil {
-				return err
-			}
-			if v {
-				branches = append(branches, n)
-			}
-		}
-		return nil
-	})
-
-	for _, b := range branches {
-		// If there are multiple branches, prefer the local branch over the remote branch.
-		// If there are multiple local branches, simply return the first one we encounter.
-		if b.IsBranch() {
-			return b.Short(), nil
-		}
-
-		// If there are no local branches, return the first remote branch we encounter with the
-		// remote name stripped.
-		remotes, err := r.Remotes()
-		if err != nil {
-			return "", fmt.Errorf("failed to get remotes: %w", err)
-		}
-		for _, remote := range remotes {
-			branch, match := strings.CutPrefix(b.Short(), remote.Config().Name+"/")
-			if match {
-				return branch, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("no branches found")
-}
-
-// reaches returns true if commit, c, can be reached from commit, start. Results are memoized in memo.
-func reaches(r *git.Repository, start, c plumbing.Hash, memo map[plumbing.Hash]bool) (bool, error) {
-	if v, ok := memo[start]; ok {
-		return v, nil
-	}
-	if start == c {
-		memo[start] = true
-		return true, nil
-	}
-	co, err := r.CommitObject(start)
-	if err != nil {
-		return false, err
-	}
-	for _, p := range co.ParentHashes {
-		v, err := reaches(r, p, c, memo)
-		if err != nil {
-			return false, err
-		}
-		if v {
-			memo[start] = true
-			return true, nil
-		}
-	}
-	memo[start] = false
-	return false, nil
-}
-
-func getCurrentBranchFromRepository(repository *Git) (string, error) {
-	branchRefs, err := repository.Branches()
-	if err != nil {
-		return "", err
-	}
-
-	headRef, err := repository.Head()
-	if err != nil {
-		return "", err
-	}
-
-	var currentBranchName string
-	err = branchRefs.ForEach(func(branchRef *plumbing.Reference) error {
-		if branchRef.Hash() == headRef.Hash() {
-			currentBranchName = branchRef.Name().String()
-
-			return nil
-		}
-
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimPrefix(currentBranchName, "refs/heads/"), nil
-}
-
-func getCurrentCommitFromRepository(repository *Git) (string, error) {
-	headRef, err := repository.Head()
-	if err != nil {
-		return "", err
-	}
-	headSha := headRef.Hash().String()[:8]
-
-	return headSha, nil
-}
-
-func getLatestTagFromRepository(repository *Git) (string, int, string, error) {
-	// Check if HEAD has tag before iterating over all tags
-	headRef, err := repository.Head()
-	if err != nil {
-		return "", 0, "", err
-	}
-
-	tag, count, latestHash, err := repository.Describe(headRef)
-	if err != nil {
-		return "", 0, "", err
-	}
-
-	return tag, count, latestHash, nil
 }
