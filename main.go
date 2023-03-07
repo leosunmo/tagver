@@ -129,7 +129,7 @@ func main() {
 	}
 
 	if *getCommit || getDefault {
-		if commit != "" {
+		if commit == "" {
 			log.Fatalf("Failed to get current commit from %s\n", path)
 		}
 		idents = append(idents, commit)
