@@ -3,9 +3,6 @@ package main
 import (
 	"log"
 	"os"
-	"strings"
-
-	"github.com/go-git/go-git/v5/plumbing"
 )
 
 // func getBranchFromCIEnv() string {
@@ -17,41 +14,16 @@ func isCI() bool {
 }
 
 // getRefsFromCI returns the commit, branch name, and tag name, if available, from the CI environment
-func getRefsFromCI(r *Git) (string, string, string) {
-	// Check if we are in a pull request ref
-	rs, err := r.References()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
+func getRefsFromCI() (string, string, string) {
 	var commit, branch, tag string
-
-	rs.ForEach(func(ref *plumbing.Reference) error {
-		if strings.HasPrefix(ref.Name().String(), "refs/pull/") {
-			// Probably in a pull request in Github
-			// https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally
-
-			// Make absolutely sure it's in Gitlab
-			if _, exists := os.LookupEnv("GITLAB_CI"); !exists {
-				// Continue processing refs. Will probably result in no refs found, but this is more graceful
-				return nil
-			}
-			commit, branch, tag = getRefsFromGithubCI()
-		}
-		if strings.HasPrefix(ref.Name().String(), "refs/pipelines/") {
-			// Probably in a merge request pipeline in Gitlab
-			// https://docs.gitlab.com/ee/ci/pipelines/merge_request_pipelines.html
-
-			// Make absolutely sure we're in a Github Actions workflow
-			if _, exists := os.LookupEnv("GITHUB_ACTION"); !exists {
-				// Continue processing refs. Will probably result in no refs found, but this is more graceful
-				return nil
-			}
-			commit, branch, tag = getRefsFromGitlabCI()
-		}
-		return nil
-	})
+	// Check if we're in Gitlab CI
+	if _, exists := os.LookupEnv("GITLAB_CI"); exists {
+		commit, branch, tag = getRefsFromGitlabCI()
+	}
+	// Check if we're in a Github Actions workflow
+	if _, exists := os.LookupEnv("GITHUB_ACTION"); exists {
+		commit, branch, tag = getRefsFromGithubCI()
+	}
 
 	return commit, branch, tag
 }

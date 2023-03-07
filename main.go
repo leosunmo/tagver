@@ -68,7 +68,7 @@ func main() {
 
 	// Check if we're in a CI environment
 	if isCI() {
-		commit, branch, tag = getRefsFromCI(r)
+		commit, branch, tag = getRefsFromCI()
 	} else {
 		if isDetachedHead(r) {
 			// Check if we're in a detached head state
@@ -119,6 +119,9 @@ func main() {
 	if (*getTag || getDefault) && !*ignoreUncleanTag && count != 0 {
 		idents = append(idents, strconv.Itoa(count))
 		if !*getCommit && *getTag {
+			if commit == "" {
+				log.Fatalf("Failed to get current commit from %s\n", path)
+			}
 			// Forcefully add commit even if it's not desired since we're
 			// in an unclean state.
 			idents = append(idents, commit)
@@ -126,6 +129,9 @@ func main() {
 	}
 
 	if *getCommit || getDefault {
+		if commit != "" {
+			log.Fatalf("Failed to get current commit from %s\n", path)
+		}
 		idents = append(idents, commit)
 	}
 
