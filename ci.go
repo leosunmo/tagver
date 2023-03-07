@@ -38,7 +38,7 @@ func getRefsFromGithubCI() (string, string, string) {
 		log.Fatalf("Failed to find GITHUB_REF_TYPE")
 	}
 
-	commit := os.Getenv("GITHUB_SHA")
+	commit := os.Getenv("GITHUB_SHA")[:8]
 
 	switch refType {
 	case "branch":
@@ -53,31 +53,35 @@ func getRefsFromGithubCI() (string, string, string) {
 func getRefsFromGitlabCI() (string, string, string) {
 	// https://docs.gitlab.com/ee/ci/variables/predefined_variables.html
 
+	var commit string
+	var branch string
+	var tag string
+
 	// CI_COMMIT_SHA should always be present.
-	commit := os.Getenv("CI_COMMIT_SHA")
+	commit = os.Getenv("CI_COMMIT_SHA")
 
 	// CI_COMMIT_TAG is present only in tag pipelines
-	if tag := os.Getenv("CI_COMMIT_TAG"); tag != "" {
-		return commit, "", tag
+	if t := os.Getenv("CI_COMMIT_TAG"); t != "" {
+		tag = t
 	}
 
 	// CI_COMMIT_BRANCH is present only in branch pipelines, including default branch.
 	// Not availabe in Merge Request pipelines or tag pipelines
-	if branch := os.Getenv("CI_COMMIT_BRANCH"); branch != "" {
-		return commit, branch, ""
+	if b := os.Getenv("CI_COMMIT_BRANCH"); b != "" {
+		branch = b
 	}
 
 	// CI_MERGE_REQUEST_SOURCE_BRANCH_NAME is only available in Merge Request pipelines
 	// and is the source branch of the merge request.
-	if branch := os.Getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"); branch != "" {
-		return commit, branch, ""
+	if b := os.Getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"); b != "" {
+		branch = b
 	}
 
 	// CI_EXTERNAL_PULL_REQUEST_SOURCE_REPOSITORY is only available in External Pull Request pipelines
-	if branch := os.Getenv("CI_EXTERNAL_PULL_REQUEST_SOURCE_REPOSITORY"); branch != "" {
-		return commit, branch, ""
+	if b := os.Getenv("CI_EXTERNAL_PULL_REQUEST_SOURCE_REPOSITORY"); b != "" {
+		branch = b
 	}
 
-	return commit, "", ""
+	return commit[:8], branch, tag
 
 }
