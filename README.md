@@ -57,7 +57,7 @@ tagver -t -b -c
 v1.0.4-main-5227b593
 ```
 ## Verify signatures and checksums
-The releases are signed with [cosign](https://cosign.io/). You can verify the signatures and checksums with the following commands.
+The releases are signed with [cosign](https://github.com/sigstore/cosign). You can verify the signatures and checksums with the following commands.
 
 First download the files:
 ```sh
