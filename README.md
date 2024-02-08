@@ -56,3 +56,22 @@ All options provided (ignores the fact that latest tag doesn't point to HEAD):
 tagver -t -b -c
 v1.0.4-main-5227b593
 ```
+## Verify signatures and checksums
+The releases are signed with [cosign](https://cosign.io/). You can verify the signatures and checksums with the following commands:
+```sh
+# Verify the checksums.txt file
+cosign verify-blob checksums.txt --cert checksums.txt.pem --signature checksums.txt.sig \
+--certificate-oidc-issuer https://token.actions.githubusercontent.com \
+--certificate-identity-regexp 'https://github\.com/leosunmo/tagver/\.github/workflows/build\.yml@refs/tags/v[0-9]+(\.[0-9]+){2}'
+
+ARCH=x86_64
+OS=Linux
+
+# Verify the tagver binary
+cosign verify-blob tagver_${OS}_${ARCH}.tar.gz --cert tagver_${OS}_${ARCH}.tar.gz.pem --signature tagver_${OS}_${ARCH}.tar.gz.sig \
+--certificate-oidc-issuer https://token.actions.githubusercontent.com \
+--certificate-identity-regexp 'https://github\.com/leosunmo/tagver/\.github/workflows/build\.yml@refs/tags/v[0-9]+(\.[0-9]+){2}'
+
+# Verify the checksums
+sha256sum --ignore-missing -c checksums.txt
+```
