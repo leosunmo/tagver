@@ -57,7 +57,26 @@ tagver -t -b -c
 v1.0.4-main-5227b593
 ```
 ## Verify signatures and checksums
-The releases are signed with [cosign](https://cosign.io/). You can verify the signatures and checksums with the following commands:
+The releases are signed with [cosign](https://cosign.io/). You can verify the signatures and checksums with the following commands.
+
+First download the files:
+```sh
+VERSION="1.5.4"
+ARCH=x86_64
+OS=Linux
+
+# Download the checksums file and associated certificates and signatures.
+wget https://github.com/leosunmo/tagver/releases/download/v${VERSION}/checksums.txt
+wget https://github.com/leosunmo/tagver/releases/download/v${VERSION}/checksums.txt.pem
+wget https://github.com/leosunmo/tagver/releases/download/v${VERSION}/checksums.txt.sig
+
+# Download the tagver binary and associated certificates and signatures.
+wget https://github.com/leosunmo/tagver/releases/download/v${VERSION}/tagver_${OS}_${ARCH}.tar.gz
+wget https://github.com/leosunmo/tagver/releases/download/v${VERSION}/tagver_${OS}_${ARCH}.tar.gz.pem
+wget https://github.com/leosunmo/tagver/releases/download/v${VERSION}/tagver_${OS}_${ARCH}.tar.gz.sig
+```
+
+Then verify the signatures and checksums:
 ```sh
 # Verify the checksums.txt file
 cosign verify-blob checksums.txt --cert checksums.txt.pem --signature checksums.txt.sig \
