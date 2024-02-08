@@ -38,6 +38,7 @@ signs:
       - COSIGN_EXPERIMENTAL=1
     args: 
       - sign-blob
+      - "-y"
       - "--oidc-issuer=https://token.actions.githubusercontent.com"
       - "--output-signature=${signature}"
       - "--output-certificate=${certificate}"
